@@ -155,6 +155,7 @@ class COPC_UA_Local_Handler : public COPC_UA_HandlerAbstract, public CThread {
      * @param paServerStrings Place to store the generated strings
      */
     void generateServerStrings(TForteUInt16 paUAServerPort, UA_ServerStrings &paServerStrings) const;
+    
     /**
      *  Creates the configuration for the OPC UA Server.
      * @param paServerStrings Strings needed to configure the server

@@ -79,7 +79,12 @@ void COPC_UA_Local_Handler::run() {
   mUaServer = UA_Server_new();
   if(mUaServer) {
     UA_ServerConfig *uaServerConfig = UA_Server_getConfig(mUaServer);
-    UA_ServerConfig_setMinimal(uaServerConfig, gOpcuaServerPort, nullptr);
+    /* The original logger is needed to avoid memory leak on shutdown.
+     * It is reassigned before the server shutdown so that freeing the memory
+     * works properly.
+     */
+    UA_Logger uaLogger = *uaServerConfig->logging;
+    *uaServerConfig->logging = COPC_UA_HandlerAbstract::getLogger();
 
     UA_ServerStrings serverStrings;
     generateServerStrings(gOpcuaServerPort, serverStrings);
@@ -117,6 +122,8 @@ void COPC_UA_Local_Handler::run() {
     } else {
       DEVLOG_ERROR("[OPC UA LOCAL]: Couldn't initialize Nodesets\n", gOpcuaServerPort);
     }
+    /* Reassign original logger to avoid memory leak. */
+    *uaServerConfig->logging = uaLogger;
     UA_Server_delete(mUaServer);
     mUaServer = nullptr;
   }
@@ -144,21 +151,20 @@ void COPC_UA_Local_Handler::generateServerStrings(TForteUInt16 paUAServerPort, U
 #endif //FORTE_COM_OPC_UA_MULTICAST
 
   paServerStrings.mAppURI = "org.eclipse.4diac."s;
+  paServerStrings.mHostname = std::string("opc.tcp://");
 #ifdef FORTE_COM_OPC_UA_CUSTOM_HOSTNAME
-  paServerStrings.mHostname = std::string(FORTE_COM_OPC_UA_CUSTOM_HOSTNAME);
+  paServerStrings.mHostname.append(FORTE_COM_OPC_UA_CUSTOM_HOSTNAME);
   paServerStrings.mHostname.append("-"s);
   paServerStrings.mHostname.append(helperBuffer);
   paServerStrings.mAppURI.append(paServerStrings.mHostname);
 #else
   paServerStrings.mAppURI.append(helperBuffer);
 #endif
-
+  paServerStrings.mHostname.append(":");
+  paServerStrings.mHostname.append(std::to_string(paUAServerPort));
 }
 
 void COPC_UA_Local_Handler::configureUAServer(UA_ServerStrings &paServerStrings, UA_ServerConfig &paUaServerConfig) const {
-
-  paUaServerConfig.logger = COPC_UA_HandlerAbstract::getLogger();
-
 #ifdef FORTE_COM_OPC_UA_MULTICAST
   paUaServerConfig.applicationDescription.applicationType = UA_APPLICATIONTYPE_DISCOVERYSERVER;
   // hostname will be added by mdns library
@@ -166,11 +172,19 @@ void COPC_UA_Local_Handler::configureUAServer(UA_ServerStrings &paServerStrings,
   paUaServerConfig.mdnsConfig.mdnsServerName = UA_String_fromChars(paServerStrings.mMdnsServerName.c_str());
 #endif //FORTE_COM_OPC_UA_MULTICAST
 
-  UA_String_clear(&paUaServerConfig.customHostname);
-#ifdef FORTE_COM_OPC_UA_CUSTOM_HOSTNAME
-  UA_String customHost = UA_String_fromChars(paServerStrings.mHostname.c_str());
-  UA_String_copy(&customHost, &paUaServerConfig.customHostname);
-#endif
+  UA_Array_delete(paUaServerConfig.serverUrls, paUaServerConfig.serverUrlsSize, &UA_TYPES[UA_TYPES_STRING]);
+  paUaServerConfig.serverUrls = nullptr;
+  paUaServerConfig.serverUrlsSize = 0;
+
+  UA_String serverUrls[1];
+  size_t serverUrlsSize = 0;
+  serverUrls[serverUrlsSize] = UA_STRING(&paServerStrings.mHostname[0]);
+  serverUrlsSize++;
+  UA_StatusCode retVal = UA_Array_copy(serverUrls, serverUrlsSize, (void**)&paUaServerConfig.serverUrls, &UA_TYPES[UA_TYPES_STRING]);
+  if(retVal != UA_STATUSCODE_GOOD) {
+    return;
+  }
+  paUaServerConfig.serverUrlsSize = serverUrlsSize;
 
   // delete pre-initialized values
   UA_LocalizedText_clear(&paUaServerConfig.applicationDescription.applicationName);
