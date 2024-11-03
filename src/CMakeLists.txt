@@ -118,6 +118,46 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/core/deviceExecutionHandlers.cpp.in $
 forte_replacefile_if_changed(${CMAKE_BINARY_DIR}/core/deviceExecutionHandlers_new.cpp ${CMAKE_BINARY_DIR}/core/deviceExecutionHandlers.cpp)
 file(REMOVE ${CMAKE_BINARY_DIR}/core/deviceExecutionHandlers_new.cpp)
 
+#############################################################################
+# Configure Timers
+#############################################################################
+
+GET_PROPERTY(TIMERHANDLER_CLASS GLOBAL PROPERTY FORTE_TIMERHANDLER_CLASS)
+GET_PROPERTY(TIMERHANDLER_FILENAME GLOBAL PROPERTY FORTE_TIMERHANDLER_FILENAME)
+GET_PROPERTY(TIMERHANDLER_NAME GLOBAL PROPERTY FORTE_TIMERHANDLER_NAME)
+GET_PROPERTY(TIMERHANDLER_DEFAULT GLOBAL PROPERTY FORTE_TIMERHANDLER_DEFAULT)
+
+if(NOT DEFINED TIMERHANDLER_DEFAULT)
+  set(TIMERHANDLER_DEFAULT "standard")
+endif()
+
+SET(TIMERHANDLER_INCLUDE "")
+SET(TIMERHANDLER_CREATE "")
+
+LIST(LENGTH TIMERHANDLER_CLASS TIMERHANDLER_CLASS_LEN)
+math(EXPR TIMERHANDLER_CLASS_LEN ${TIMERHANDLER_CLASS_LEN}-1)
+
+FOREACH(POS RANGE ${TIMERHANDLER_CLASS_LEN})
+
+  LIST(GET TIMERHANDLER_CLASS      ${POS} CLASS) 
+  LIST(GET TIMERHANDLER_FILENAME   ${POS} FILENAME)
+  LIST(GET TIMERHANDLER_NAME       ${POS} NAME_)
+
+  SET(TIMERHANDLER_INCLUDE  "${TIMERHANDLER_INCLUDE}#include \"${FILENAME}\"\n")
+
+  SET(TIMERHANDLER_ENUM  "${TIMERHANDLER_ENUM}    ${NAME_},\n")
+  
+  SET(TIMERHANDLER_CREATE "${TIMERHANDLER_CREATE}  if(timerHandlerToCreate == AvailableTimers::${NAME_}) return new ${CLASS}(paDeviceExecution);\n")
+  math(EXPR TIMERHANDLER_ID           ${TIMERHANDLER_ID}+1)
+ENDFOREACH(POS)
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/arch/timerHandlerFactory.h.in ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.h)
+forte_replacefile_if_changed(${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.h ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory.h)
+file(REMOVE ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.h)
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/arch/timerHandlerFactory.cpp.in ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.cpp)
+forte_replacefile_if_changed(${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.cpp ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory.cpp)
+file(REMOVE ${CMAKE_BINARY_DIR}/arch/timerHandlerFactory_new.cpp)
 
 #############################################################################
 # Configure startuphook
