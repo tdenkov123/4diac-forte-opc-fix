@@ -24,13 +24,6 @@ CLuaCFB::CLuaCFB(CStringDictionary::TStringId paInstanceNameId, const CLuaCFBTyp
 
 CLuaCFB::~CLuaCFB() = default;
 
-
-bool CLuaCFB::initialize() {
-  //before calling super we need to configure the interface of the FB
-  setupFBInterface(getFBInterfaceSpec());
-  return CGenFunctionBlock<CCompositeFB>::initialize();
-}
-
 bool CLuaCFB::createInternalFBs(){
   const SCFB_FBNData &fbnData = getFBNData();
   if(fbnData.mNumFBs){
