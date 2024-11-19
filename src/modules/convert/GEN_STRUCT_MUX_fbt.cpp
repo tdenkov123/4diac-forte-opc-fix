@@ -23,7 +23,9 @@
 DEFINE_GENERIC_FIRMWARE_FB(GEN_STRUCT_MUX, g_nStringIdGEN_STRUCT_MUX);
 
 const CStringDictionary::TStringId GEN_STRUCT_MUX::scmEventInputNames[] = { g_nStringIdREQ };
+const CStringDictionary::TStringId GEN_STRUCT_MUX::scmEventInputTypeIds[] = {g_nStringIdEvent};
 const CStringDictionary::TStringId GEN_STRUCT_MUX::scmEventOutputNames[] = { g_nStringIdCNF };
+const CStringDictionary::TStringId GEN_STRUCT_MUX::scmEventOutputTypeIds[] = {g_nStringIdEvent};
 
 const CStringDictionary::TStringId GEN_STRUCT_MUX::scmDataOutputNames[] = { g_nStringIdOUT };
 
@@ -111,8 +113,10 @@ bool GEN_STRUCT_MUX::createInterfaceSpec(const char *paConfigString, SFBInterfac
 
   paInterfaceSpec.mNumEIs = 1;
   paInterfaceSpec.mEINames = scmEventInputNames;
+  paInterfaceSpec.mEITypeNames = scmEventInputTypeIds;
   paInterfaceSpec.mNumEOs = 1;
   paInterfaceSpec.mEONames = scmEventOutputNames;
+  paInterfaceSpec.mEOTypeNames = scmEventOutputTypeIds;
   paInterfaceSpec.mNumDIs = structSize;
   paInterfaceSpec.mDINames = diNames;
   paInterfaceSpec.mDIDataTypeNames = diDataTypeNames;
