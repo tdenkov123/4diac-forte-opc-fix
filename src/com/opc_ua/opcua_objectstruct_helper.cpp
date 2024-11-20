@@ -65,6 +65,7 @@ bool COPC_UA_ObjectStruct_Helper::checkStructTypeConnection(CActionInfo &paActio
 }
 
 bool COPC_UA_ObjectStruct_Helper::createOPCUAStructType(CActionInfo &paActionInfo, const std::string &paStructTypeName, CIEC_STRUCT &paStructType) {
+  bool retVal = true;
   COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
   if(!localHandler) {
     DEVLOG_ERROR("[OPC UA OBJECT STRUCT HELPER]: Failed to get LocalHandler because LocalHandler is null!\n");
@@ -78,10 +79,12 @@ bool COPC_UA_ObjectStruct_Helper::createOPCUAStructType(CActionInfo &paActionInf
   for(size_t i = 0; i < paStructType.getStructSize(); i++) {
     CIEC_ANY* structMember = paStructType.getMember(i);
     if(!addOPCUAStructTypeComponent(server, typeNodeId, paStructTypeName, structMember, structMemberNames[i])) {
-      return false;
+      retVal = false;
+      break;
     } 
   }
-  return true;
+  UA_NodeId_clear(&typeNodeId);
+  return retVal;
 }
 
 bool COPC_UA_ObjectStruct_Helper::createOPCUANamespace(char* nsName) {
@@ -135,15 +138,16 @@ bool COPC_UA_ObjectStruct_Helper::addOPCUAStructTypeComponent(UA_Server *paServe
   UA_NodeId memberNodeId;
   if(paParentNodeId.identifierType == UA_NODEIDTYPE_STRING) {
     std::string memberBrowsePathStr = getStructMemberBrowsePath(paStructName, paStructMemberNameId);
-    memberNodeId = UA_NODEID_STRING(mOpcuaTypeNamespaceIndex, &memberBrowsePathStr[0]);
+    memberNodeId = UA_NODEID_STRING_ALLOC(mOpcuaTypeNamespaceIndex, memberBrowsePathStr.c_str());
   } else {
     memberNodeId = UA_NODEID_NUMERIC(mOpcuaTypeNamespaceIndex, 0);
   }
   UA_StatusCode status = UA_Server_addVariableNode(paServer, memberNodeId, paParentNodeId,
     UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
     UA_QUALIFIEDNAME(mOpcuaTypeNamespaceIndex, &structMemberName[0]),
-    UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), vAttr, nullptr, &memberNodeId);
+    UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), vAttr, nullptr, nullptr);
 
+  UA_NodeId_clear(&memberNodeId);
   if(status != UA_STATUSCODE_GOOD) {
     DEVLOG_ERROR("[OPC UA OBJECT STRUCT HELPER]: Failed to add Member to OPC UA Struct Type Node for Member %s, Status Code: %s\n", structMemberName.c_str(), UA_StatusCode_name(status));
     return false;
