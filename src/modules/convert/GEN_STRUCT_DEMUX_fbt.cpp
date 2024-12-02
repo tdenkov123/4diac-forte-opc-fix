@@ -45,12 +45,6 @@ GEN_STRUCT_DEMUX::GEN_STRUCT_DEMUX(const CStringDictionary::TStringId paInstance
     CGenFunctionBlock<CFunctionBlock>(paContainer, paInstanceNameId){
 }
 
-GEN_STRUCT_DEMUX::~GEN_STRUCT_DEMUX() {
-  delete[] (getGenInterfaceSpec().mDIDataTypeNames);
-  delete[] (getGenInterfaceSpec().mDONames);
-  delete[] (getGenInterfaceSpec().mDODataTypeNames);
-}
-
 void GEN_STRUCT_DEMUX::readInputData(TEventID) {
   readData(0, *mDIs[0], mDIConns[0]);
 }
@@ -93,9 +87,11 @@ bool GEN_STRUCT_DEMUX::createInterfaceSpec(const char *paConfigString, SFBInterf
 
       size_t structSize = structInstance->getStructSize();
       if(structSize != 0 && structSize < cgInvalidPortId) { //the structure size must be non zero and less than cgInvalidPortId (maximum number of data outputs)
-        CStringDictionary::TStringId *doDataTypeNames = new CStringDictionary::TStringId[GEN_STRUCT_MUX::calcStructTypeNameSize(*structInstance)];
-        CStringDictionary::TStringId *doNames = new CStringDictionary::TStringId[structSize];
-        CStringDictionary::TStringId *diDataTypeNames = new CStringDictionary::TStringId[1];
+       
+        mDoDataTypeNames = std::make_unique<CStringDictionary::TStringId[]>(GEN_STRUCT_MUX::calcStructTypeNameSize(*structInstance));
+        mDoNames = std::make_unique<CStringDictionary::TStringId[]>(structSize);
+
+        mDiDataTypeNames[0] = structTypeNameId;
 
         paInterfaceSpec.mNumEIs = 1;
         paInterfaceSpec.mEINames = scmEventInputNames;
@@ -105,15 +101,15 @@ bool GEN_STRUCT_DEMUX::createInterfaceSpec(const char *paConfigString, SFBInterf
         paInterfaceSpec.mEOTypeNames = scmEventOutputTypeIds;
         paInterfaceSpec.mNumDIs = 1;
         paInterfaceSpec.mDINames = scmDataInputNames;
-        paInterfaceSpec.mDIDataTypeNames = diDataTypeNames;
+        paInterfaceSpec.mDIDataTypeNames = mDiDataTypeNames.data();
         paInterfaceSpec.mNumDOs = structSize;
-        paInterfaceSpec.mDONames = doNames;
-        paInterfaceSpec.mDODataTypeNames = doDataTypeNames;
-        diDataTypeNames[0] = structTypeNameId;
+        paInterfaceSpec.mDONames = mDoNames.get();
+        paInterfaceSpec.mDODataTypeNames = mDoDataTypeNames.get();
 
+        auto doDataTypeNames = mDoDataTypeNames.get();
         for(size_t i = 0; i < structSize; ++i) {
           const CIEC_ANY &member = *structInstance->getMember(i);
-          doNames[i] = structInstance->elementNames()[i];
+          mDoNames[i] = structInstance->elementNames()[i];
           fillDataPointSpec(member, doDataTypeNames);
         }
         retval = true;

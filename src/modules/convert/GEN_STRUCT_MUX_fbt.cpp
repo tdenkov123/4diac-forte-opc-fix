@@ -61,12 +61,6 @@ void GEN_STRUCT_MUX::copyStructValuesToInputs() {
   }
 }
 
-GEN_STRUCT_MUX::~GEN_STRUCT_MUX(){
-  delete[](getGenInterfaceSpec().mDINames);
-  delete[](getGenInterfaceSpec().mDIDataTypeNames);
-  delete[](getGenInterfaceSpec().mDODataTypeNames);
-}
-
 void GEN_STRUCT_MUX::readInputData(TEventID) {
   for(TPortId i = 0; i < getFBInterfaceSpec().mNumDIs; ++i) {
     readData(i, *mDIs[i], mDIConns[i]);
@@ -106,10 +100,11 @@ bool GEN_STRUCT_MUX::createInterfaceSpec(const char *paConfigString, SFBInterfac
                 CStringDictionary::getInstance().get(structTypeNameId), cgInvalidPortId);
     return false;
   }
+  
+  mDiDataTypeNames = std::make_unique<CStringDictionary::TStringId[]>(calcStructTypeNameSize(*structInstance));
+  mDiNames = std::make_unique<CStringDictionary::TStringId[]>(structSize);
 
-  auto* diDataTypeNames = new CStringDictionary::TStringId[calcStructTypeNameSize(*structInstance)];
-  auto* diNames = new CStringDictionary::TStringId[structSize];
-  auto* doDataTypeNames = new CStringDictionary::TStringId[1];
+  mDoDataTypeNames[0] = structTypeNameId;
 
   paInterfaceSpec.mNumEIs = 1;
   paInterfaceSpec.mEINames = scmEventInputNames;
@@ -118,19 +113,18 @@ bool GEN_STRUCT_MUX::createInterfaceSpec(const char *paConfigString, SFBInterfac
   paInterfaceSpec.mEONames = scmEventOutputNames;
   paInterfaceSpec.mEOTypeNames = scmEventOutputTypeIds;
   paInterfaceSpec.mNumDIs = structSize;
-  paInterfaceSpec.mDINames = diNames;
-  paInterfaceSpec.mDIDataTypeNames = diDataTypeNames;
+  paInterfaceSpec.mDINames = mDiNames.get();
+  paInterfaceSpec.mDIDataTypeNames = mDiDataTypeNames.get();
   paInterfaceSpec.mNumDOs = 1;
   paInterfaceSpec.mDONames = scmDataOutputNames;
-  paInterfaceSpec.mDODataTypeNames = doDataTypeNames;
-  doDataTypeNames[0] = structTypeNameId;
+  paInterfaceSpec.mDODataTypeNames = mDoDataTypeNames.data();
 
+  auto diDataTypeNames = mDiDataTypeNames.get();
   for(decltype(paInterfaceSpec.mNumDIs) i = 0; i < paInterfaceSpec.mNumDIs; i++) {
     const auto& member = *structInstance->getMember(i);
-    diNames[i] = structInstance->elementNames()[i];
+    mDiNames[i] = structInstance->elementNames()[i];
     fillDataPointSpec(member, diDataTypeNames);
   }
-  
   return true;
 }
 
