@@ -40,10 +40,6 @@ CBaseCommFB::CBaseCommFB(const CStringDictionary::TStringId paInstanceNameId, fo
 
 CBaseCommFB::~CBaseCommFB() {
   closeConnection();
-  delete[](getFBInterfaceSpec().mDINames);
-  delete[](getFBInterfaceSpec().mDIDataTypeNames);
-  delete[](getFBInterfaceSpec().mDONames);
-  delete[](getFBInterfaceSpec().mDODataTypeNames);
 }
 
 EMGMResponse CBaseCommFB::changeExecutionState(EMGMCommandType paCommand) {
