@@ -51,23 +51,16 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
   private:
 
     enum Parameters {
-      Mode,
       TypeName,
       PathToInstance
     };
 
-    static const std::string scmModeINITMSG;
-    static const std::string scmModeINITUSERTEXT;
-    static const std::string scmModeTRIGGER;
-
     static const std::string scmAlarmTypeBrowsePath;
-    static const std::string scmUserTextAttribute;
-
     static const std::string scmAlarmConditionName;
 
     static char smEmptyString[];
 
-    static const size_t scmNumberOfAlarmParameters = 3;
+    static const size_t scmNumberOfAlarmParameters = 2;
 
     COPC_UA_HandlerAbstract *mHandler;
 
@@ -93,21 +86,17 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
 
     UA_StatusCode triggerAlarm();
 
-    forte::com_infra::EComResponse initOPCUAType(const std::string &paMode, const std::string &paTypeName);
+    forte::com_infra::EComResponse initOPCUAType(UA_Server *paServer, const std::string &paTypeName, bool paIsPublisher);
 
-    forte::com_infra::EComResponse createOPCUAObject(const std::string &paTypeName, const std::string &paPathToInstance);
+    forte::com_infra::EComResponse createOPCUAObject(UA_Server *paServer, const std::string &paPathToInstance, bool paIsPublisher);
 
-    UA_StatusCode createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath);
+    UA_StatusCode createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath, bool paIsPublisher);
 
     UA_StatusCode addOPCUACondition(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath);
 
     forte::com_infra::EComResponse createAlarmType(UA_Server *paServer, const std::string &paTypeName);
     
-    forte::com_infra::EComResponse addOPCUATypeProperties(UA_Server *paServer, const std::string &paMode, const std::string &paTypeName);
-
-    forte::com_infra::EComResponse addOPCUATypeMSGProperties(UA_Server *paServer, const std::string &paParentTypeName, bool paIsPublisher);
-
-    forte::com_infra::EComResponse addOPCUATypeUSERProperties(UA_Server *paServer, const std::string &paParentTypeName, bool paIsPublisher);
+    forte::com_infra::EComResponse addOPCUATypeProperties(UA_Server *paServer, const std::string &paTypeName, bool paIsPublisher);
 
     UA_StatusCode addVariableNode(UA_Server *paServer, const std::string &paParentTypeName, char *paVariableName, CIEC_ANY &paVariableType);
 
@@ -117,7 +106,7 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
 
     std::string getPortNameFromConnection(CStringDictionary::TStringId paPortNameId, bool paIsPublisher);
 
-    std::string getFBNameFromConnection();
+    std::string getFBNameFromConnection(bool paIsPublisher);
 
     char *getNameFromString(const std::string &paName);
 };

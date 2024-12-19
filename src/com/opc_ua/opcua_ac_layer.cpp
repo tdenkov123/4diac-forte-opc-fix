@@ -21,15 +21,8 @@
 
 using namespace forte::com_infra;
 
-const std::string COPC_UA_AC_Layer::scmModeINITMSG = "INITMSG";
-const std::string COPC_UA_AC_Layer::scmModeINITUSERTEXT = "INITUSERTEXT";
-const std::string COPC_UA_AC_Layer::scmModeTRIGGER = "TRIGGER";
-
 const std::string COPC_UA_AC_Layer::scmAlarmTypeBrowsePath = "/Types/0:EventTypes/0:BaseEventType/0:ConditionType/0:AcknowledgeableConditionType/0:AlarmConditionType/%d:";
-const std::string COPC_UA_AC_Layer::scmUserTextAttribute = "TEXT0%d";
-
 const std::string COPC_UA_AC_Layer::scmAlarmConditionName = "AlarmCondition";
-
 char COPC_UA_AC_Layer::smEmptyString[] = "";
 
 COPC_UA_AC_Layer::COPC_UA_AC_Layer(CComLayer *paUpperLayer, CBaseCommFB *paComFB) :
@@ -52,18 +45,33 @@ EComResponse COPC_UA_AC_Layer::openConnection(char *paLayerParameter) {
   EComResponse eRetVal = e_InitTerminated;
   CParameterParser parser(paLayerParameter, ';');
   size_t nrOfParams = parser.parseParameters();
-  if(nrOfParams == scmNumberOfAlarmParameters) {
-    std::string mode = parser[Mode];
-    mHandler = static_cast<COPC_UA_HandlerAbstract*>(&getExtEvHandler<COPC_UA_Local_Handler>());
-    if(mode == scmModeINITMSG || mode == scmModeINITUSERTEXT) {
-      eRetVal = initOPCUAType(mode, parser[TypeName]);
-    } else if (mode == scmModeTRIGGER) {
-      eRetVal = createOPCUAObject(parser[TypeName], parser[PathToInstance] ? parser[PathToInstance] : std::string());
-    } else {
-      DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong usage of layer parameters! Expected first param: %s | %s | %s, actual: %s\n", scmModeINITMSG.c_str(), scmModeINITUSERTEXT.c_str(), scmModeTRIGGER.c_str(), mode.c_str());
-      return eRetVal;   
-    }
+  if(nrOfParams != scmNumberOfAlarmParameters) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong number of parameters for FB %s. Expected: %d, Actual: %d\n", getCommFB()->getInstanceName(), scmNumberOfAlarmParameters, nrOfParams);
+    return eRetVal;
   }
+  bool isPublisher;
+  switch (mFb->getComServiceType()) {
+  case e_Publisher:
+    isPublisher = true;
+    break;
+  case e_Subscriber: 
+    isPublisher = false;
+    break;
+  default:
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong CommFB used for FB %s! Expected: Publish/Subscribe\n", getCommFB()->getInstanceName());
+    return eRetVal;
+  }
+  mHandler = static_cast<COPC_UA_HandlerAbstract*>(&getExtEvHandler<COPC_UA_Local_Handler>());
+  COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
+  localHandler->enableHandler();
+  UA_Server *server = localHandler->getUAServer();
+  if(initOPCUAType(server, parser[TypeName], isPublisher) != e_InitOk) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Initializing Alarm Type for FB %s failed!\n", getCommFB()->getInstanceName());
+    return eRetVal;
+  }
+  std::string instancePath(parser[PathToInstance] ? parser[PathToInstance] : smEmptyString);
+  eRetVal = createOPCUAObject(server, instancePath, isPublisher);
+  
   return eRetVal;
 }
 
@@ -135,30 +143,18 @@ UA_StatusCode COPC_UA_AC_Layer::triggerAlarm() {
   return status;
 }
 
-EComResponse COPC_UA_AC_Layer::initOPCUAType(const std::string &paMode, const std::string &paTypeName) {
-  EComResponse eRetVal = e_InitTerminated;
-  COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
-  localHandler->enableHandler();
-  UA_Server *server = localHandler->getUAServer();
-  eRetVal = createAlarmType(server, paTypeName);
-  return eRetVal == e_InitOk ? addOPCUATypeProperties(server, paMode, paTypeName) : eRetVal;
+EComResponse COPC_UA_AC_Layer::initOPCUAType(UA_Server *paServer, const std::string &paTypeName, bool paIsPublisher) {
+  EComResponse eRetVal = createAlarmType(paServer, paTypeName);
+  return eRetVal == e_InitOk ? addOPCUATypeProperties(paServer, paTypeName, paIsPublisher) : eRetVal;
 }
 
-EComResponse COPC_UA_AC_Layer::createOPCUAObject(const std::string &paTypeName, const std::string &paPathToInstance) {
-  std::string browsePath(COPC_UA_ObjectStruct_Helper::getBrowsePath(scmAlarmTypeBrowsePath, paTypeName, 1));  // TODO Change 1 to namespaceIndex
-  if(!isOPCUAObjectPresent(browsePath)) {
-     DEVLOG_ERROR("[OPC UA A&C LAYER]: Type %s does not exist in Address Space!\n", paTypeName.c_str());
-    return e_InitTerminated;
-  }
-  COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
-  localHandler->enableHandler();
-  UA_Server *server = localHandler->getUAServer();
+EComResponse COPC_UA_AC_Layer::createOPCUAObject(UA_Server *paServer, const std::string &paPathToInstance, bool paIsPublisher) {
   std::string objectBrowsePath;
-  if(createOPCUAObjectNode(server, paPathToInstance, objectBrowsePath) != UA_STATUSCODE_GOOD) {
+  if(createOPCUAObjectNode(paServer, paPathToInstance, objectBrowsePath, paIsPublisher) != UA_STATUSCODE_GOOD) {
     return e_InitTerminated;
   }
   std::string conditionBrowsePath;
-  if(addOPCUACondition(server, objectBrowsePath, conditionBrowsePath) != UA_STATUSCODE_GOOD) {
+  if(addOPCUACondition(paServer, objectBrowsePath, conditionBrowsePath) != UA_STATUSCODE_GOOD) {
     return e_InitTerminated;
   }
   if(initializeMemberActions(conditionBrowsePath) != e_InitOk) {
@@ -167,11 +163,11 @@ EComResponse COPC_UA_AC_Layer::createOPCUAObject(const std::string &paTypeName, 
   return e_InitOk;
 }
 
-UA_StatusCode COPC_UA_AC_Layer::createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath) {
+UA_StatusCode COPC_UA_AC_Layer::createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath, bool paIsPublisher) {
   if(!COPC_UA_Helper::isBrowsePathValid(paPathToInstance)) {
     return UA_STATUSCODE_BAD;
   }
-  std::string instanceNameStr(getFBNameFromConnection());
+  std::string instanceNameStr(getFBNameFromConnection(paIsPublisher));
   if(instanceNameStr.empty()) {
     DEVLOG_ERROR("[OPC UA A&C LAYER]: Retrieving FB Instance Name failed!");
     return UA_STATUSCODE_BAD;
@@ -287,32 +283,7 @@ EComResponse COPC_UA_AC_Layer::createAlarmType(UA_Server *paServer, const std::s
   return e_InitOk;
 }
 
-EComResponse COPC_UA_AC_Layer::addOPCUATypeProperties(UA_Server *paServer, const std::string &paMode, const std::string &paTypeName) {
-  EComResponse eRetVal = e_InitTerminated;
-  bool isPublisher;
-  switch (mFb->getComServiceType()) {
-  case e_Publisher:
-    isPublisher = true;
-    break;
-  case e_Subscriber: 
-    isPublisher = false;
-    break;
-  default:
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong CommFB used for FB %s! Expected: Publish/Subscribe\n", getCommFB()->getInstanceName());
-    return e_InitTerminated;
-  }
-
-  if(paMode == scmModeINITMSG) {
-    eRetVal = addOPCUATypeMSGProperties(paServer, paTypeName, isPublisher);
-  } else if (paMode == scmModeINITUSERTEXT) {
-    eRetVal = addOPCUATypeUSERProperties(paServer, paTypeName, isPublisher);
-  } else {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong mode specified for FB %s, Mode: %s\n", getCommFB()->getInstanceName(), paMode.c_str());
-  }
-  return eRetVal;
-}
-
-forte::com_infra::EComResponse COPC_UA_AC_Layer::addOPCUATypeMSGProperties(UA_Server *paServer, const std::string &paParentTypeName, bool paIsPublisher) {
+EComResponse COPC_UA_AC_Layer::addOPCUATypeProperties(UA_Server *paServer, const std::string &paTypeName, bool paIsPublisher) {
   CIEC_ANY **apoDataPorts = paIsPublisher ? getCommFB()->getSDs() : getCommFB()->getRDs();
   size_t numDataPorts = paIsPublisher ? getCommFB()->getNumSD() : getCommFB()->getNumRD();
   const SFBInterfaceSpec &interfaceSpec = getCommFB()->getFBInterfaceSpec();
@@ -320,27 +291,9 @@ forte::com_infra::EComResponse COPC_UA_AC_Layer::addOPCUATypeMSGProperties(UA_Se
   for(size_t i = 0; i < numDataPorts; i++) {
     std::string dataPortName = getPortNameFromConnection(dataPortNameIds[i+2], paIsPublisher);
     char* propertyName = getNameFromString(dataPortName);
-    UA_StatusCode status = addVariableNode(paServer, paParentTypeName, propertyName, apoDataPorts[i]->unwrap());
+    UA_StatusCode status = addVariableNode(paServer, paTypeName, propertyName, apoDataPorts[i]->unwrap());
     if(status != UA_STATUSCODE_GOOD) {
-      DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to add OPCUA MSG Property for FB %s, Port: %s, Status: %s\n", getCommFB()->getInstanceName(), dataPortName, UA_StatusCode_name(status));
-      return e_InitTerminated;
-    }
-  }
-  return e_InitOk;
-}
-
-forte::com_infra::EComResponse COPC_UA_AC_Layer::addOPCUATypeUSERProperties(UA_Server *paServer, const std::string &paParentTypeName, bool paIsPublisher) {
-  CIEC_ANY **apoDataPorts = paIsPublisher ? getCommFB()->getSDs() : getCommFB()->getRDs();
-  size_t numDataPorts = paIsPublisher ? getCommFB()->getNumSD() : getCommFB()->getNumRD();
-  for(size_t i = 0; i < numDataPorts; i++) {
-    char* propertyName = new char[scmUserTextAttribute.length() + 2];
-    snprintf(propertyName, scmUserTextAttribute.length() + 2, scmUserTextAttribute.c_str(), i+1);
-    propertyName[scmUserTextAttribute.length() + 1] = '\0';
-    mNames.emplace_back(propertyName);
-
-    UA_StatusCode status = addVariableNode(paServer, paParentTypeName, propertyName, apoDataPorts[i]->unwrap());
-    if(status != UA_STATUSCODE_GOOD) {
-      DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to add OPCUA MSG Property for FB %s, Port: %s, Status: %s\n", getCommFB()->getInstanceName(), propertyName, UA_StatusCode_name(status));
+      DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to add OPCUA AlarmType Property for FB %s, Port: %s, Status: %s\n", getCommFB()->getInstanceName(), dataPortName, UA_StatusCode_name(status));
       return e_InitTerminated;
     }
   }
@@ -391,21 +344,9 @@ std::string COPC_UA_AC_Layer::getPortNameFromConnection(CStringDictionary::TStri
   return std::string(CStringDictionary::getInstance().get(connectionPoint.mFB->getFBInterfaceSpec().mDINames[portId]));
 }
 
-std::string COPC_UA_AC_Layer::getFBNameFromConnection() {
-  bool isPublisher;
-  switch (getCommFB()->getComServiceType()) {
-  case e_Publisher:
-    isPublisher = true;
-    break;
-  case e_Subscriber: 
-    isPublisher = false;
-    break;
-  default:
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong CommFB used for FB %s! Expected: Publish/Subscribe\n", getCommFB()->getInstanceName());
-    return std::string();
-  }
-  const CStringDictionary::TStringId *dataPortNameIds = isPublisher ? getCommFB()->getFBInterfaceSpec().mDINames : getCommFB()->getFBInterfaceSpec().mDONames;
-  const CDataConnection *portConnection = isPublisher ? getCommFB()->getDIConnection(dataPortNameIds[2]) : getCommFB()->getDOConnection(dataPortNameIds[2]);
+std::string COPC_UA_AC_Layer::getFBNameFromConnection(bool paIsPublisher) {
+  const CStringDictionary::TStringId *dataPortNameIds = paIsPublisher ? getCommFB()->getFBInterfaceSpec().mDINames : getCommFB()->getFBInterfaceSpec().mDONames;
+  const CDataConnection *portConnection = paIsPublisher ? getCommFB()->getDIConnection(dataPortNameIds[2]) : getCommFB()->getDOConnection(dataPortNameIds[2]);
   if(!portConnection) {
      DEVLOG_ERROR("[OPC UA A&C LAYER]: Error at connection of FB %s!\n", getCommFB()->getInstanceName());
      return std::string();
