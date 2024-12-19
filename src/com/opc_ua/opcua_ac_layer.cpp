@@ -318,8 +318,8 @@ UA_StatusCode COPC_UA_AC_Layer::addOPCUACondition(UA_Server *paServer, const std
 forte::com_infra::EComResponse COPC_UA_AC_Layer::initializeMemberActions(const std::string &paParentBrowsePath) {
   mMemberActionInfo.reset(new CActionInfo(*this, CActionInfo::UA_ActionType::eWrite, std::string()));
   size_t numPorts = getCommFB()->getNumSD();
-  const SFBInterfaceSpec *interfaceSpec = getCommFB()->getFBInterfaceSpec();
-  const CStringDictionary::TStringId *dataPortNameIds = interfaceSpec->mDINames;
+  const SFBInterfaceSpec &interfaceSpec = getCommFB()->getFBInterfaceSpec();
+  const CStringDictionary::TStringId *dataPortNameIds = interfaceSpec.mDINames;
   for(size_t i = 0; i < numPorts; i++) {
     std::string dataPortName = getPortNameFromConnection(dataPortNameIds[i+2], true);
     std::string memberBrowsePath(COPC_UA_ObjectStruct_Helper::getMemberBrowsePath(paParentBrowsePath, dataPortName));
@@ -405,8 +405,8 @@ EComResponse COPC_UA_AC_Layer::addOPCUATypeProperties(UA_Server *paServer, const
 forte::com_infra::EComResponse COPC_UA_AC_Layer::addOPCUATypeMSGProperties(UA_Server *paServer, const std::string &paParentTypeName, bool paIsPublisher) {
   CIEC_ANY **apoDataPorts = paIsPublisher ? getCommFB()->getSDs() : getCommFB()->getRDs();
   size_t numDataPorts = paIsPublisher ? getCommFB()->getNumSD() : getCommFB()->getNumRD();
-  const SFBInterfaceSpec *interfaceSpec = getCommFB()->getFBInterfaceSpec();
-  const CStringDictionary::TStringId *dataPortNameIds = paIsPublisher ? interfaceSpec->mDINames : interfaceSpec->mDONames;
+  const SFBInterfaceSpec &interfaceSpec = getCommFB()->getFBInterfaceSpec();
+  const CStringDictionary::TStringId *dataPortNameIds = paIsPublisher ? interfaceSpec.mDINames : interfaceSpec.mDONames;
   for(size_t i = 0; i < numDataPorts; i++) {
     std::string dataPortName = getPortNameFromConnection(dataPortNameIds[i+2], paIsPublisher);
     char* propertyName = getNameFromString(dataPortName);
@@ -478,7 +478,7 @@ std::string COPC_UA_AC_Layer::getPortNameFromConnection(CStringDictionary::TStri
   const CDataConnection *portConnection = paIsPublisher ? getCommFB()->getDIConnection(paPortNameId) : getCommFB()->getDOConnection(paPortNameId);
   const CConnectionPoint connectionPoint = portConnection->getSourceId();
   TPortId portId = connectionPoint.mPortId;
-  return std::string(CStringDictionary::getInstance().get(connectionPoint.mFB->getFBInterfaceSpec()->mDINames[portId]));
+  return std::string(CStringDictionary::getInstance().get(connectionPoint.mFB->getFBInterfaceSpec().mDINames[portId]));
 }
 
 std::string COPC_UA_AC_Layer::getFBNameFromConnection() {
@@ -494,7 +494,7 @@ std::string COPC_UA_AC_Layer::getFBNameFromConnection() {
     DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong CommFB used for FB %s! Expected: Publish/Subscribe\n", getCommFB()->getInstanceName());
     return std::string();
   }
-  const CStringDictionary::TStringId *dataPortNameIds = isPublisher ? getCommFB()->getFBInterfaceSpec()->mDINames : getCommFB()->getFBInterfaceSpec()->mDONames;
+  const CStringDictionary::TStringId *dataPortNameIds = isPublisher ? getCommFB()->getFBInterfaceSpec().mDINames : getCommFB()->getFBInterfaceSpec().mDONames;
   const CDataConnection *portConnection = isPublisher ? getCommFB()->getDIConnection(dataPortNameIds[2]) : getCommFB()->getDOConnection(dataPortNameIds[2]);
   if(!portConnection) {
      DEVLOG_ERROR("[OPC UA A&C LAYER]: Error at connection of FB %s!\n", getCommFB()->getInstanceName());
