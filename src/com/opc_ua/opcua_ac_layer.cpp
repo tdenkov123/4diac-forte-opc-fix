@@ -24,13 +24,9 @@ using namespace forte::com_infra;
 const std::string COPC_UA_AC_Layer::scmModeINITMSG = "INITMSG";
 const std::string COPC_UA_AC_Layer::scmModeINITUSERTEXT = "INITUSERTEXT";
 const std::string COPC_UA_AC_Layer::scmModeTRIGGER = "TRIGGER";
-const std::string COPC_UA_AC_Layer::scmTypeALARM = "Alarm";
-const std::string COPC_UA_AC_Layer::scmTypeEVENT = "Event";
 
 const std::string COPC_UA_AC_Layer::scmAlarmTypeBrowsePath = "/Types/0:EventTypes/0:BaseEventType/0:ConditionType/0:AcknowledgeableConditionType/0:AlarmConditionType/%d:";
-const std::string COPC_UA_AC_Layer::scmEventTypeBrowsePath = "/Types/0:EventTypes/0:BaseEventType/%d:";
 const std::string COPC_UA_AC_Layer::scmUserTextAttribute = "TEXT0%d";
-
 
 const std::string COPC_UA_AC_Layer::scmAlarmConditionName = "AlarmCondition";
 
@@ -56,14 +52,13 @@ EComResponse COPC_UA_AC_Layer::openConnection(char *paLayerParameter) {
   EComResponse eRetVal = e_InitTerminated;
   CParameterParser parser(paLayerParameter, ';');
   size_t nrOfParams = parser.parseParameters();
-  if(nrOfParams == scmNumberOfAlarmParameters || nrOfParams == scmNumberOfEventParameters) {
+  if(nrOfParams == scmNumberOfAlarmParameters) {
     std::string mode = parser[Mode];
-    mInitType = parser[InitType];
     mHandler = static_cast<COPC_UA_HandlerAbstract*>(&getExtEvHandler<COPC_UA_Local_Handler>());
     if(mode == scmModeINITMSG || mode == scmModeINITUSERTEXT) {
-      eRetVal = initOPCUAType(mode, mInitType, parser[TypeName]);
+      eRetVal = initOPCUAType(mode, parser[TypeName]);
     } else if (mode == scmModeTRIGGER) {
-      eRetVal = createOPCUAObject(mInitType, parser[TypeName], parser[PathToInstance] ? parser[PathToInstance] : std::string());
+      eRetVal = createOPCUAObject(parser[TypeName], parser[PathToInstance] ? parser[PathToInstance] : std::string());
     } else {
       DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong usage of layer parameters! Expected first param: %s | %s | %s, actual: %s\n", scmModeINITMSG.c_str(), scmModeINITUSERTEXT.c_str(), scmModeTRIGGER.c_str(), mode.c_str());
       return eRetVal;   
@@ -88,18 +83,9 @@ EComResponse COPC_UA_AC_Layer::sendData(void*, unsigned int) {
       return e_ProcessDataSendFailed;
     }
   }
-  if(mInitType == scmTypeALARM) {
-    if(triggerAlarm() != UA_STATUSCODE_GOOD) {
-      DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Alarm Data failed!\n");
-      return e_ProcessDataSendFailed;
-    }
-  } else if(mInitType == scmTypeEVENT) {
-    if(triggerEvent() != UA_STATUSCODE_GOOD) {
-      DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Event Data failed!\n");
-      return e_ProcessDataSendFailed;
-    }
-  } else {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: On Send Data - %s is not a valid Init type!\n", mInitType); 
+  if(triggerAlarm() != UA_STATUSCODE_GOOD) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Alarm Data failed!\n");
+    return e_ProcessDataSendFailed;
   }
   return e_ProcessDataOk;
 }
@@ -149,69 +135,17 @@ UA_StatusCode COPC_UA_AC_Layer::triggerAlarm() {
   return status;
 }
 
-UA_StatusCode COPC_UA_AC_Layer::triggerEvent() {
-  COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
-  UA_Server *server = localHandler->getUAServer();
-  UA_NodeId eventNode;
-  UA_StatusCode status = UA_Server_createEvent(server, mTypeNodeId, &eventNode);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to create OPC UA Event for FB %s. Status: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
-    return status;
-  }
-
-  char *timeProperty = getNameFromString("Time");
-  UA_DateTime eventTime = UA_DateTime_now();
-  status = UA_Server_writeObjectProperty_scalar(server, eventNode, UA_QUALIFIEDNAME(0, timeProperty),
-                                              &eventTime, &UA_TYPES[UA_TYPES_DATETIME]);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to write TimeProperty for OPC UA Event for FB %s. Status: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
-    return status;
-  }
-  char *sourceNameProperty = getNameFromString("SourceName");
-  char *sourceName = getNameFromString("Server");
-  UA_String uaEventSourceName = UA_STRING(sourceName);
-  status = UA_Server_writeObjectProperty_scalar(server, eventNode, UA_QUALIFIEDNAME(0, sourceNameProperty),
-                                        &uaEventSourceName, &UA_TYPES[UA_TYPES_STRING]);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to write SourceProperty for OPC UA Event for FB %s. Status: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
-  }
-
-  status = UA_Server_triggerEvent(server, eventNode, 
-                                    UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER),
-                                    nullptr, UA_TRUE);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to trigger OPC UA Event for FB %s. Status: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
-  }
-  return status;
-}
-
-EComResponse COPC_UA_AC_Layer::initOPCUAType(const std::string &paMode, const std::string &paType, const std::string &paTypeName) {
+EComResponse COPC_UA_AC_Layer::initOPCUAType(const std::string &paMode, const std::string &paTypeName) {
   EComResponse eRetVal = e_InitTerminated;
   COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
   localHandler->enableHandler();
   UA_Server *server = localHandler->getUAServer();
-  if(paType == scmTypeALARM) {
-    eRetVal = createAlarmType(server, paTypeName);
-  } else if(paType == scmTypeEVENT) {
-    eRetVal = createEventType(server, paTypeName);
-  } else {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong usage of layer parameters! Expected second param: %s/%s, actual: %s\n", scmTypeALARM.c_str(), scmTypeEVENT.c_str(), paType.c_str());
-    return e_InitTerminated;
-  }
-    return eRetVal == e_InitOk ? addOPCUATypeProperties(server, paMode, paTypeName) : eRetVal;
+  eRetVal = createAlarmType(server, paTypeName);
+  return eRetVal == e_InitOk ? addOPCUATypeProperties(server, paMode, paTypeName) : eRetVal;
 }
 
-EComResponse COPC_UA_AC_Layer::createOPCUAObject(const std::string &paType, const std::string &paTypeName, const std::string &paPathToInstance) {
-  std::string browsePathPrefix;
-  if(paType == scmTypeALARM) {
-    browsePathPrefix = scmAlarmTypeBrowsePath;
-  } else if(paType == scmTypeEVENT) {
-    browsePathPrefix = scmEventTypeBrowsePath;
-  } else {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Wrong usage of layer parameters! Expected second param: %s/%s, actual: %s\n", scmTypeALARM.c_str(), scmTypeEVENT.c_str(), paType.c_str());
-    return e_InitTerminated;
-  }
-  std::string browsePath(COPC_UA_ObjectStruct_Helper::getBrowsePath(browsePathPrefix, paTypeName, 1));  // TODO Change 1 to namespaceIndex
+EComResponse COPC_UA_AC_Layer::createOPCUAObject(const std::string &paTypeName, const std::string &paPathToInstance) {
+  std::string browsePath(COPC_UA_ObjectStruct_Helper::getBrowsePath(scmAlarmTypeBrowsePath, paTypeName, 1));  // TODO Change 1 to namespaceIndex
   if(!isOPCUAObjectPresent(browsePath)) {
      DEVLOG_ERROR("[OPC UA A&C LAYER]: Type %s does not exist in Address Space!\n", paTypeName.c_str());
     return e_InitTerminated;
@@ -219,18 +153,16 @@ EComResponse COPC_UA_AC_Layer::createOPCUAObject(const std::string &paType, cons
   COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
   localHandler->enableHandler();
   UA_Server *server = localHandler->getUAServer();
-  if(paType == scmTypeALARM) {
-    std::string objectBrowsePath;
-    if(createOPCUAObjectNode(server, paPathToInstance, objectBrowsePath) != UA_STATUSCODE_GOOD) {
-      return e_InitTerminated;
-    }
-    std::string conditionBrowsePath;
-    if(addOPCUACondition(server, objectBrowsePath, conditionBrowsePath) != UA_STATUSCODE_GOOD) {
-      return e_InitTerminated;
-    }
-    if(initializeMemberActions(conditionBrowsePath) != e_InitOk) {
-      return e_InitTerminated;
-    }
+  std::string objectBrowsePath;
+  if(createOPCUAObjectNode(server, paPathToInstance, objectBrowsePath) != UA_STATUSCODE_GOOD) {
+    return e_InitTerminated;
+  }
+  std::string conditionBrowsePath;
+  if(addOPCUACondition(server, objectBrowsePath, conditionBrowsePath) != UA_STATUSCODE_GOOD) {
+    return e_InitTerminated;
+  }
+  if(initializeMemberActions(conditionBrowsePath) != e_InitOk) {
+    return e_InitTerminated;
   }
   return e_InitOk;
 }
@@ -350,28 +282,6 @@ EComResponse COPC_UA_AC_Layer::createAlarmType(UA_Server *paServer, const std::s
 
   if (status != UA_STATUSCODE_GOOD) {
     DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to create OPC UA Alarm Type Node for Type %s, Status Code: %s\n", paTypeName.c_str(), UA_StatusCode_name(status));
-    return e_InitTerminated;
-  }
-  return e_InitOk;
-}
-
-EComResponse COPC_UA_AC_Layer::createEventType(UA_Server *paServer, const std::string &paTypeName) {
-  std::string browsePath(COPC_UA_ObjectStruct_Helper::getBrowsePath(scmEventTypeBrowsePath, paTypeName, 1));  // TODO Change 1 to namespaceIndex
-  if(isOPCUAObjectPresent(browsePath)) {
-    return e_InitOk;
-  }
-  char* typeName = getNameFromString(paTypeName);
-  mTypeNodeId = UA_NODEID_STRING(1, typeName);          // TODO Change 1 to namespaceIndex
-  UA_ObjectTypeAttributes oAttr = UA_ObjectTypeAttributes_default;
-  oAttr.displayName = UA_LOCALIZEDTEXT(smEmptyString, typeName);
-  UA_StatusCode status = UA_Server_addObjectTypeNode(paServer, mTypeNodeId,
-                          UA_NODEID_NUMERIC(0, UA_NS0ID_BASEEVENTTYPE),
-                          UA_NODEID_NUMERIC(0, UA_NS0ID_HASSUBTYPE),
-                          UA_QUALIFIEDNAME(1, typeName), oAttr,             // TODO Change 1 to namespaceIndex
-                          nullptr, &mTypeNodeId);
-
-  if (status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Failed to create OPC UA Event Type Node for Type %s, Status Code: %s\n", paTypeName.c_str(), UA_StatusCode_name(status));
     return e_InitTerminated;
   }
   return e_InitOk;

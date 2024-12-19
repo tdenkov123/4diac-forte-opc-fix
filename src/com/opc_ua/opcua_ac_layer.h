@@ -52,7 +52,6 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
 
     enum Parameters {
       Mode,
-      InitType,
       TypeName,
       PathToInstance
     };
@@ -60,20 +59,15 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
     static const std::string scmModeINITMSG;
     static const std::string scmModeINITUSERTEXT;
     static const std::string scmModeTRIGGER;
-    static const std::string scmTypeALARM;
-    static const std::string scmTypeEVENT;
 
     static const std::string scmAlarmTypeBrowsePath;
-    static const std::string scmEventTypeBrowsePath;
     static const std::string scmUserTextAttribute;
 
     static const std::string scmAlarmConditionName;
 
     static char smEmptyString[];
 
-    static const size_t scmNumberOfAlarmParameters = 4;
-
-    static const size_t scmNumberOfEventParameters = 3;
+    static const size_t scmNumberOfAlarmParameters = 3;
 
     COPC_UA_HandlerAbstract *mHandler;
 
@@ -84,8 +78,6 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
     std::vector<char*> mNames;
     std::vector<UA_NodeId> mTypePropertyNodes;
     std::unique_ptr<CActionInfo> mMemberActionInfo;
-
-    std::string mInitType;
 
     /**
      * Called when INIT is triggered in the FB and QI is set to true
@@ -101,19 +93,15 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
 
     UA_StatusCode triggerAlarm();
 
-    UA_StatusCode triggerEvent();
+    forte::com_infra::EComResponse initOPCUAType(const std::string &paMode, const std::string &paTypeName);
 
-    forte::com_infra::EComResponse initOPCUAType(const std::string &paMode, const std::string &paType, const std::string &paTypeName);
-
-    forte::com_infra::EComResponse createOPCUAObject(const std::string &paType, const std::string &paTypeName, const std::string &paPathToInstance);
+    forte::com_infra::EComResponse createOPCUAObject(const std::string &paTypeName, const std::string &paPathToInstance);
 
     UA_StatusCode createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath);
 
     UA_StatusCode addOPCUACondition(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath);
 
     forte::com_infra::EComResponse createAlarmType(UA_Server *paServer, const std::string &paTypeName);
-
-    forte::com_infra::EComResponse createEventType(UA_Server *paServer, const std::string &paTypeName);
     
     forte::com_infra::EComResponse addOPCUATypeProperties(UA_Server *paServer, const std::string &paMode, const std::string &paTypeName);
 
