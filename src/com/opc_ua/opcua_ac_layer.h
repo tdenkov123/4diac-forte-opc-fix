@@ -59,6 +59,14 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
     static const std::string scmAlarmConditionName;
 
     static char smEmptyString[];
+    static char smEnabledState[];
+    static char smActiveState[];
+    static char smId[];
+    static char smTime[];
+    static char smRetain[];
+    static char smSeverity[];
+
+    static UA_UInt16 smSeverityValue;
 
     static const size_t scmNumberOfAlarmParameters = 2;
 
@@ -94,6 +102,8 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
 
     UA_StatusCode addOPCUACondition(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath);
 
+    forte::com_infra::EComResponse setConditionCallbacks(UA_Server *paServer);
+
     forte::com_infra::EComResponse createAlarmType(UA_Server *paServer, const std::string &paTypeName);
     
     forte::com_infra::EComResponse addOPCUATypeProperties(UA_Server *paServer, const std::string &paTypeName, bool paIsPublisher);
@@ -109,4 +119,10 @@ class COPC_UA_AC_Layer : public COPC_UA_Layer {
     std::string getFBNameFromConnection(bool paIsPublisher);
 
     char *getNameFromString(const std::string &paName);
+
+    static UA_StatusCode enabledStateCallback(UA_Server *server, const UA_NodeId *condition);
+
+    static UA_StatusCode activeStateCallback(UA_Server *server, const UA_NodeId *condition);
+
+    static UA_StatusCode ackedStateCallback(UA_Server *server, const UA_NodeId *condition);
 };

@@ -23,7 +23,16 @@ using namespace forte::com_infra;
 
 const std::string COPC_UA_AC_Layer::scmAlarmTypeBrowsePath = "/Types/0:EventTypes/0:BaseEventType/0:ConditionType/0:AcknowledgeableConditionType/0:AlarmConditionType/%d:";
 const std::string COPC_UA_AC_Layer::scmAlarmConditionName = "AlarmCondition";
+
 char COPC_UA_AC_Layer::smEmptyString[] = "";
+char COPC_UA_AC_Layer::smEnabledState[] = "EnabledState";
+char COPC_UA_AC_Layer::smActiveState[] = "ActiveState";
+char COPC_UA_AC_Layer::smId[] = "Id";
+char COPC_UA_AC_Layer::smTime[] = "Time";
+char COPC_UA_AC_Layer::smRetain[] = "Retain";
+char COPC_UA_AC_Layer::smSeverity[] = "Severity";
+
+UA_UInt16 COPC_UA_AC_Layer::smSeverityValue = 500;
 
 COPC_UA_AC_Layer::COPC_UA_AC_Layer(CComLayer *paUpperLayer, CBaseCommFB *paComFB) :
   COPC_UA_Layer(paUpperLayer, paComFB), mHandler(nullptr), mMemberActionInfo(nullptr) {
@@ -71,7 +80,6 @@ EComResponse COPC_UA_AC_Layer::openConnection(char *paLayerParameter) {
   }
   std::string instancePath(parser[PathToInstance] ? parser[PathToInstance] : smEmptyString);
   eRetVal = createOPCUAObject(server, instancePath, isPublisher);
-  
   return eRetVal;
 }
 
@@ -88,11 +96,12 @@ EComResponse COPC_UA_AC_Layer::recvData(const void*, unsigned int) {
 EComResponse COPC_UA_AC_Layer::sendData(void*, unsigned int) {
   if(mMemberActionInfo) {
     if(mHandler->executeAction(*mMemberActionInfo) != UA_STATUSCODE_GOOD) {
+      DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Alarm Data failed for FB %s!\n", getCommFB()->getInstanceName());
       return e_ProcessDataSendFailed;
     }
   }
   if(triggerAlarm() != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Alarm Data failed!\n");
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Sending Alarm Data failed for FB %s!\n", getCommFB()->getInstanceName());
     return e_ProcessDataSendFailed;
   }
   return e_ProcessDataOk;
@@ -106,40 +115,36 @@ EComResponse COPC_UA_AC_Layer::processInterrupt() {
 UA_StatusCode COPC_UA_AC_Layer::triggerAlarm() {
   COPC_UA_Local_Handler* localHandler = static_cast<COPC_UA_Local_Handler*>(mHandler);
   UA_Server *server = localHandler->getUAServer();
-  char *activeStateProperty = getNameFromString("ActiveState");
-  char *idProperty = getNameFromString("Id");
-  char *timeProperty = getNameFromString("Time");
-  char *retainProperty = getNameFromString("Retain");
-  UA_QualifiedName activeStateField = UA_QUALIFIEDNAME(0,activeStateProperty);
-  UA_QualifiedName activeStateIdField = UA_QUALIFIEDNAME(0,idProperty);
-  UA_QualifiedName retainField = UA_QUALIFIEDNAME(0,retainProperty);
+  UA_QualifiedName activeStateField = UA_QUALIFIEDNAME(0,smActiveState);
+  UA_QualifiedName activeStateIdField = UA_QUALIFIEDNAME(0,smId);
+  UA_QualifiedName retainField = UA_QUALIFIEDNAME(0,smRetain);
+  UA_QualifiedName severityField = UA_QUALIFIEDNAME(0,smSeverity);
+  UA_QualifiedName timeField = UA_QUALIFIEDNAME(0,smTime);
 
   UA_Variant value;
+  UA_UInt16 *severityValue = &smSeverityValue;
+  UA_Variant_setScalar(&value, severityValue, &UA_TYPES[UA_TYPES_UINT16]);
+  UA_StatusCode  status = UA_Server_setConditionField(server, mConditionInstanceId,
+                                      &value, severityField);
+
   UA_Boolean retainValue = true;
   UA_Variant_setScalar(&value, &retainValue, &UA_TYPES[UA_TYPES_BOOLEAN]);
-  UA_StatusCode status = UA_Server_setConditionField(server, mConditionInstanceId,
+  status |= UA_Server_setConditionField(server, mConditionInstanceId,
                                                       &value, retainField);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Writing Retain Property failed, StatusCode: %s\n", UA_StatusCode_name(status));
-    return status;
-  }
-  UA_DateTime alarmTime = UA_DateTime_now();
-  status = UA_Server_writeObjectProperty_scalar(server, mConditionInstanceId,
-                                                  UA_QUALIFIEDNAME(0, timeProperty),
-                                                  &alarmTime,
-                                                  &UA_TYPES[UA_TYPES_DATETIME]);
-  if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Writing Alarm Property failed, StatusCode: %s\n", UA_StatusCode_name(status));
-    return status;
-  }
+  
   UA_Boolean activeState = true;
   UA_Variant_setScalar(&value, &activeState, &UA_TYPES[UA_TYPES_BOOLEAN]);
-  status = UA_Server_setConditionVariableFieldProperty(server, mConditionInstanceId,
+  status |= UA_Server_setConditionVariableFieldProperty(server, mConditionInstanceId,
                                               &value, activeStateField,
-                                              activeStateIdField);
+                                              activeStateIdField);             
+
+  UA_DateTime alarmTime = UA_DateTime_now();
+  status |= UA_Server_writeObjectProperty_scalar(server, mConditionInstanceId,
+                                                  timeField, &alarmTime,
+                                                  &UA_TYPES[UA_TYPES_DATETIME]);
   if(status != UA_STATUSCODE_GOOD) {
-    DEVLOG_ERROR("[OPC UA A&C LAYER]: Activating Alarm failed, StatusCode: %s\n", UA_StatusCode_name(status));
-  }                                       
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Triggering Alarm failed for FB %s, StatusCode: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
+  }                      
   return status;
 }
 
@@ -160,7 +165,7 @@ EComResponse COPC_UA_AC_Layer::createOPCUAObject(UA_Server *paServer, const std:
   if(initializeMemberActions(conditionBrowsePath) != e_InitOk) {
     return e_InitTerminated;
   }
-  return e_InitOk;
+  return setConditionCallbacks(paServer);
 }
 
 UA_StatusCode COPC_UA_AC_Layer::createOPCUAObjectNode(UA_Server *paServer, const std::string &paPathToInstance, std::string &paBrowsePath, bool paIsPublisher) {
@@ -226,10 +231,8 @@ UA_StatusCode COPC_UA_AC_Layer::addOPCUACondition(UA_Server *paServer, const std
     DEVLOG_ERROR("[OPC UA A&C LAYER]: Adding Condition failed for FB %s. StatusCode %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status)); 
     return status;
   }
-  char *enabledStateProperty = getNameFromString("EnabledState");
-  char *idProperty = getNameFromString("Id");
-  UA_QualifiedName enabledStateField = UA_QUALIFIEDNAME(0,enabledStateProperty);
-  UA_QualifiedName enabledStateIdField = UA_QUALIFIEDNAME(0,idProperty);
+  UA_QualifiedName enabledStateField = UA_QUALIFIEDNAME(0, smEnabledState);
+  UA_QualifiedName enabledStateIdField = UA_QUALIFIEDNAME(0, smId);
   UA_Boolean enabledState = true;
 
   UA_Variant value;
@@ -243,7 +246,28 @@ UA_StatusCode COPC_UA_AC_Layer::addOPCUACondition(UA_Server *paServer, const std
   return status;
 }
 
-forte::com_infra::EComResponse COPC_UA_AC_Layer::initializeMemberActions(const std::string &paParentBrowsePath) {
+EComResponse COPC_UA_AC_Layer::setConditionCallbacks(UA_Server *paServer) {
+  EComResponse eRetVal = e_InitOk;
+  UA_TwoStateVariableChangeCallback callback = enabledStateCallback;
+  UA_StatusCode status = UA_Server_setConditionTwoStateVariableCallback(paServer, mConditionInstanceId,
+                                                                        mConditionSourceId, false,
+                                                                        callback, UA_ENTERING_ENABLEDSTATE);
+  callback = activeStateCallback;
+  status |= UA_Server_setConditionTwoStateVariableCallback(paServer, mConditionInstanceId,
+                                                            mConditionSourceId, false,
+                                                            callback, UA_ENTERING_ACTIVESTATE);
+  callback = ackedStateCallback;
+  status |= UA_Server_setConditionTwoStateVariableCallback(paServer, mConditionInstanceId,
+                                                           mConditionSourceId, false,
+                                                           callback, UA_ENTERING_ACKEDSTATE);
+  if(status != UA_STATUSCODE_GOOD) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Setting Condition callback methods failed for FB %s, Status Code: %s\n", getCommFB()->getInstanceName(), UA_StatusCode_name(status));
+    eRetVal = e_InitTerminated;
+  }
+  return eRetVal;
+}
+
+EComResponse COPC_UA_AC_Layer::initializeMemberActions(const std::string &paParentBrowsePath) {
   mMemberActionInfo.reset(new CActionInfo(*this, CActionInfo::UA_ActionType::eWrite, std::string()));
   size_t numPorts = getCommFB()->getNumSD();
   const SFBInterfaceSpec &interfaceSpec = getCommFB()->getFBInterfaceSpec();
@@ -362,4 +386,49 @@ char *COPC_UA_AC_Layer::getNameFromString(const std::string &paName) {
   name[length] = '\0';
   mNames.emplace_back(name);
   return name;
+}
+
+UA_StatusCode COPC_UA_AC_Layer::enabledStateCallback(UA_Server *server, const UA_NodeId *condition) {
+  UA_DateTime dateTime = UA_DateTime_now();
+  UA_StatusCode status = UA_Server_writeObjectProperty_scalar(server, *condition,
+                                            UA_QUALIFIEDNAME(0, smTime),
+                                            &dateTime,
+                                            &UA_TYPES[UA_TYPES_DATETIME]);
+  if(status != UA_STATUSCODE_GOOD) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Enable State callback failed, Status Code: %s\n", UA_StatusCode_name(status));
+  }
+  return status;
+}
+
+UA_StatusCode COPC_UA_AC_Layer::activeStateCallback(UA_Server *server, const UA_NodeId *condition) {
+  UA_DateTime dateTime = UA_DateTime_now();
+  UA_StatusCode status = UA_Server_writeObjectProperty_scalar(server, *condition,
+                                            UA_QUALIFIEDNAME(0, smTime),
+                                            &dateTime,
+                                            &UA_TYPES[UA_TYPES_DATETIME]);
+  if(status != UA_STATUSCODE_GOOD) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Active State callback failed, Status Code: %s\n", UA_StatusCode_name(status));
+  }
+  return status;
+}
+
+UA_StatusCode COPC_UA_AC_Layer::ackedStateCallback(UA_Server *server, const UA_NodeId *condition) {
+  UA_Boolean activeStateId = false;
+  UA_Variant value;
+  UA_QualifiedName activeStateField = UA_QUALIFIEDNAME(0,smActiveState);
+  UA_QualifiedName activeStateIdField = UA_QUALIFIEDNAME(0,smId);
+
+  UA_Variant_setScalar(&value, &activeStateId, &UA_TYPES[UA_TYPES_BOOLEAN]);
+  UA_StatusCode status = UA_Server_setConditionVariableFieldProperty(server, *condition,
+                                                                    &value, activeStateField,
+                                                                    activeStateIdField);
+
+  UA_DateTime dateTime = UA_DateTime_now();
+  status |= UA_Server_writeObjectProperty_scalar(server, *condition,
+                                                UA_QUALIFIEDNAME(0, smTime),
+                                                &dateTime, &UA_TYPES[UA_TYPES_DATETIME]);
+  if(status != UA_STATUSCODE_GOOD) {
+    DEVLOG_ERROR("[OPC UA A&C LAYER]: Acknowledged State callback failed, Status Code: %s\n", UA_StatusCode_name(status));
+  }
+  return status;
 }
