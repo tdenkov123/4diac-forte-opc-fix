@@ -1054,7 +1054,8 @@ UA_StatusCode OPCUA_MGR::onAddWatch(UA_Server*,
   std::vector<std::string> fullFbName;
   parseDestinationName(destination, fullFbName);
 
-  const char* resourceName = static_cast<const char*>(objectContext);
+  const char* resourceName = "EMB_RES";
+  // const char* resourceName = static_cast<const char*>(objectContext);
   OPCUA_MGR* uaMGR = static_cast<OPCUA_MGR*>(methodContext);
   uaMGR->setMGMCommand(EMGMCommandType::MonitoringAddWatch, CStringDictionary::getInstance().insert(resourceName), nullptr, fullFbName);
   eRetVal = uaMGR->mUaDevice.executeMGMCommand(uaMGR->mCommand);
@@ -1113,7 +1114,8 @@ UA_StatusCode OPCUA_MGR::onRemoveWatch(UA_Server*,
   std::vector<std::string> fullFbName;
   parseDestinationName(destination, fullFbName);
 
-  const char* resourceName = static_cast<const char*>(objectContext);
+  const char* resourceName = "EMB_RES";
+  // const char* resourceName = static_cast<const char*>(objectContext);
   OPCUA_MGR* uaMGR = static_cast<OPCUA_MGR*>(methodContext);
   uaMGR->setMGMCommand(EMGMCommandType::MonitoringRemoveWatch, CStringDictionary::getInstance().insert(resourceName), nullptr, fullFbName);
   eRetVal = uaMGR->mUaDevice.executeMGMCommand(uaMGR->mCommand);
@@ -1142,7 +1144,8 @@ UA_StatusCode OPCUA_MGR::onTriggerEvent(UA_Server*,
   std::vector<std::string> fullFbName;
   parseDestinationName(destination, fullFbName);
 
-  const char* resourceName = static_cast<const char*>(objectContext);
+  const char* resourceName = "EMB_RES";
+  // const char* resourceName = static_cast<const char*>(objectContext);
   OPCUA_MGR* uaMGR = static_cast<OPCUA_MGR*>(methodContext);
   uaMGR->setMGMCommand(EMGMCommandType::MonitoringTriggerEvent, CStringDictionary::getInstance().insert(resourceName), OPCUA_MGR::scmTriggerEventParam, fullFbName);
   eRetVal = uaMGR->mUaDevice.executeMGMCommand(uaMGR->mCommand);
@@ -1173,7 +1176,8 @@ UA_StatusCode OPCUA_MGR::onForceValue(UA_Server*,
   std::vector<std::string> writeDestination;
   parseDestinationName(destination, writeDestination);
 
-  const char* resourceName = static_cast<const char*>(objectContext);
+  const char* resourceName = "EMB_RES";
+  // const char* resourceName = static_cast<const char*>(objectContext);
   OPCUA_MGR* uaMGR = static_cast<OPCUA_MGR*>(methodContext);
   uaMGR->setMGMCommand(EMGMCommandType::MonitoringForce, CStringDictionary::getInstance().insert(resourceName), writeValue.c_str(), writeDestination);
   eRetVal = uaMGR->mUaDevice.executeMGMCommand(uaMGR->mCommand);
@@ -1202,7 +1206,8 @@ UA_StatusCode OPCUA_MGR::onClearForce(UA_Server*,
   std::vector<std::string> fullFbName;
   parseDestinationName(destination, fullFbName);
 
-  const char* resourceName = static_cast<const char*>(objectContext);
+  const char* resourceName = "EMB_RES";
+  // const char* resourceName = static_cast<const char*>(objectContext);
   OPCUA_MGR* uaMGR = static_cast<OPCUA_MGR*>(methodContext);
   uaMGR->setMGMCommand(EMGMCommandType::MonitoringClearForce, CStringDictionary::getInstance().insert(resourceName), nullptr, fullFbName);
   eRetVal = uaMGR->mUaDevice.executeMGMCommand(uaMGR->mCommand);
